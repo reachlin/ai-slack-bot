@@ -237,3 +237,66 @@ def test_execute_without_a_payload_fails_loudly(monkeypatch, tmp_path):
     )
     ok, msg = overseer.execute_refresh_token(pending)
     assert not ok and "re-upload" in msg
+
+
+# --- removing the credential from Slack ------------------------------------
+
+def _pending_with_file(file_id="F123"):
+    return ApprovalStore(ttl_s=300).register(
+        "refresh_token", requested_by=ADMIN, channel="C1", thread_ts="1.0",
+        payload={"token": a_token(), "expires": "2026-09-29 18:18",
+                 "ttl_h": 167.0, "file_id": file_id},
+    )
+
+
+def test_the_upload_is_deleted_from_slack_after_a_successful_install(monkeypatch, tmp_path):
+    """A Schwab refresh token left in Slack storage is a live credential in a
+    third system. Once it is safely on disk, the copy should go."""
+    dst = tmp_path / "schwab_token.json"
+    monkeypatch.setattr(overseer.settings, "overseer_token_path", dst)
+    monkeypatch.setattr(overseer, "execute_restart", lambda pending=None: (True, "Overseer restarted."))
+    deleted = []
+    monkeypatch.setattr(
+        overseer, "_delete_slack_file",
+        lambda fid: (deleted.append(fid), (True, "deleted"))[1],
+    )
+
+    ok, msg = overseer.execute_refresh_token(_pending_with_file())
+
+    assert ok
+    assert deleted == ["F123"]
+    assert "deleted from Slack" in msg
+
+
+def test_a_failed_deletion_does_not_mask_a_successful_install(monkeypatch, tmp_path):
+    """The install is the important half. If the cleanup fails, say so and
+    tell the user to remove it — do not report failure and invite a re-upload
+    of a token that is already live."""
+    dst = tmp_path / "schwab_token.json"
+    monkeypatch.setattr(overseer.settings, "overseer_token_path", dst)
+    monkeypatch.setattr(overseer, "execute_restart", lambda pending=None: (True, "Overseer restarted."))
+    monkeypatch.setattr(
+        overseer, "_delete_slack_file", lambda fid: (False, "missing_scope")
+    )
+
+    ok, msg = overseer.execute_refresh_token(_pending_with_file())
+
+    assert ok, "the install succeeded; cleanup is secondary"
+    assert "could not delete" in msg
+    assert "manually" in msg
+    assert dst.exists()
+
+
+def test_deletion_is_skipped_when_there_is_no_file_id(monkeypatch, tmp_path):
+    dst = tmp_path / "schwab_token.json"
+    monkeypatch.setattr(overseer.settings, "overseer_token_path", dst)
+    monkeypatch.setattr(overseer, "execute_restart", lambda pending=None: (True, "ok"))
+    called = []
+    monkeypatch.setattr(overseer, "_delete_slack_file", lambda fid: called.append(fid) or (True, ""))
+
+    pending = ApprovalStore(ttl_s=300).register(
+        "refresh_token", requested_by=ADMIN, channel="C1", thread_ts="1.0",
+        payload={"token": a_token(), "expires": "x", "ttl_h": 1.0},
+    )
+    ok, _ = overseer.execute_refresh_token(pending)
+    assert ok and called == []

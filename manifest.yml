@@ -19,8 +19,10 @@ oauth_config:
       - im:read
       - im:write
       - reactions:write
-      # Reading an uploaded schwab_token.json for overseer_refresh_token.
+      # Read an uploaded schwab_token.json, and delete it once installed so a
+      # live credential does not linger in Slack storage.
       - files:read
+      - files:write
 settings:
   event_subscriptions:
     bot_events:

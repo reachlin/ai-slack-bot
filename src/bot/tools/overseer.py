@@ -346,8 +346,14 @@ async def overseer_refresh_token() -> str:
         "refresh_token",
         f"Install a new Schwab token and restart the *gold-finger overseer*.\n"
         f"New token: valid *{ttl_h:.1f}h*, expires *{expires}*.\n"
-        f"The current token is archived first; nothing else changes.",
-        payload={"token": data, "expires": expires, "ttl_h": ttl_h},
+        f"The current token is archived first, and the uploaded file is deleted "
+        f"from Slack once it is installed.",
+        payload={
+            "token": data,
+            "expires": expires,
+            "ttl_h": ttl_h,
+            "file_id": f.get("id"),
+        },
     )
 
 
@@ -367,6 +373,35 @@ OVERSEER_REFRESH_TOKEN = Tool(
 )
 
 
+def _delete_slack_file(file_id: str) -> tuple[bool, str]:
+    """Remove an uploaded file from Slack.
+
+    A Schwab refresh token sitting in Slack storage is a live credential in a
+    third system nobody is auditing. Needs the files:write bot scope; stdlib
+    only, because this runs in the sync executor thread.
+    """
+    import urllib.parse
+    import urllib.request
+
+    body = urllib.parse.urlencode({"file": file_id}).encode()
+    req = urllib.request.Request(
+        "https://slack.com/api/files.delete",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {settings.slack_bot_token}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            payload = json.loads(resp.read())
+        if payload.get("ok"):
+            return True, "deleted"
+        return False, payload.get("error", "unknown error")
+    except Exception as exc:  # noqa: BLE001
+        return False, f"{type(exc).__name__}: {exc}"
+
+
 def execute_refresh_token(pending) -> tuple[bool, str]:
     """Install the validated token, then restart. Approved path only."""
     if not pending or not pending.payload:
@@ -384,11 +419,23 @@ def execute_refresh_token(pending) -> tuple[bool, str]:
     except Exception as exc:  # noqa: BLE001
         return False, f"install failed: {type(exc).__name__}: {exc}"
 
+    # Only now that the token is safely on disk is it right to drop the copy
+    # in Slack; a failure here must not undo or mask the install.
+    note = ""
+    file_id = pending.payload.get("file_id")
+    if file_id:
+        deleted, why = _delete_slack_file(file_id)
+        note = (
+            " Uploaded file deleted from Slack."
+            if deleted
+            else f" :warning: could not delete the upload from Slack ({why}) — remove it manually."
+        )
+
     ok, msg = execute_restart()
     expires = pending.payload.get("expires", "?")
     if not ok:
-        return False, f"Token installed (expires {expires}) but the restart failed: {msg}"
-    return True, f"Token installed (expires {expires}). {msg}"
+        return False, f"Token installed (expires {expires}) but the restart failed: {msg}{note}"
+    return True, f"Token installed (expires {expires}). {msg}{note}"
 
 
 OVERSEER_TOOLS = [
