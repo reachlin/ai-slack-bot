@@ -2,6 +2,8 @@
 
 Slack bot backed by any OpenAI-compatible LLM (OpenAI, DeepSeek, ...). Python + Slack Bolt (Socket Mode) + `openai` SDK.
 
+Docs: [design](docs/design.md) · [setup](docs/setup.md) · [plan](docs/plan.md)
+
 ## Local dev (Docker)
 
 1. Create a Slack app at https://api.slack.com/apps → *From an app manifest* → paste `manifest.yml`.
@@ -23,8 +25,8 @@ heading and searched with BM25 keywords (Chinese/Japanese/Korean via character b
 picked up on the next question; no restart needed.
 
 The folder is mounted read-only into the dev container and copied into the prod image.
-**This repo is public, so `knowledge/` is git-ignored** except `about-this-bot.md`. Remove the
-`knowledge/*` lines in `.gitignore` if your notes are safe to publish.
+**This repo is public, so `knowledge/` is git-ignored** except files explicitly whitelisted in
+`.gitignore` (`!knowledge/<file>.md`). Only whitelist notes that are safe to publish.
 
 ## Tests
 

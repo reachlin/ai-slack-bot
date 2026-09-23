@@ -11,15 +11,20 @@ CJK = re.compile(r"[぀-ヿ㐀-䶿一-鿿가-힯]+")
 WORD = re.compile(r"[^\W_]+")
 MAX_CHUNK_CHARS = 1500
 K1, B = 1.5, 0.75
+# Filler words that would otherwise dominate scores in a small corpus.
+STOPWORDS = frozenset(
+    "a an and are as at be but by can do does for from how i in is it me my of on or so "
+    "that the this to was what when where which who why will with you your".split()
+)
 
 
 def tokenize(text: str) -> list[str]:
-    """Lowercased words, plus character bigrams for CJK text (which has no spaces)."""
+    """Lowercased words (minus stopwords), plus character bigrams for CJK text (which has no spaces)."""
     text = text.lower()
     tokens = []
     for run in CJK.findall(text):
         tokens += [run] if len(run) == 1 else [run[i : i + 2] for i in range(len(run) - 1)]
-    tokens += WORD.findall(CJK.sub(" ", text))
+    tokens += [w for w in WORD.findall(CJK.sub(" ", text)) if w not in STOPWORDS]
     return tokens
 
 
@@ -105,7 +110,8 @@ class KnowledgeBase:
                 str(path.relative_to(self.root)), path.read_text(encoding="utf-8", errors="replace")
             )
         ]
-        docs = [tokenize(f"{c.heading}\n{c.text}") for c in self.chunks]
+        # File name counts too, so "about-alice.md" matches "alice" even without headings.
+        docs = [tokenize(f"{Path(c.source).stem}\n{c.heading}\n{c.text}") for c in self.chunks]
         self._tfs = [Counter(d) for d in docs]
         self._lens = [len(d) for d in docs]
         self._df = Counter(term for tf in self._tfs for term in tf)

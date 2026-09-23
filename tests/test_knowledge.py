@@ -4,7 +4,7 @@ from bot.knowledge import KnowledgeBase, chunk_markdown, tokenize
 
 
 def test_tokenize_words_and_cjk_bigrams():
-    assert tokenize("Deploy the API-server v2") == ["deploy", "the", "api", "server", "v2"]
+    assert tokenize("How do I deploy the API-server v2") == ["deploy", "api", "server", "v2"]
     assert tokenize("部署流程") == ["部署", "署流", "流程"]
     assert tokenize("用 Docker 部署") == ["用", "部署", "docker"]
 
@@ -50,6 +50,13 @@ def test_search_ranks_relevant_section_first(tmp_path):
     (score, top), *_ = kb.search("how do I rollback a release")
     assert top.citation == "ops/deploy.md › Deploy › Rollback"
     assert kb.search("kubernetes") == []
+
+
+def test_file_name_is_searchable(tmp_path):
+    _write(tmp_path, "about-alice.md", "Enjoys hiking and chess.\n")
+    _write(tmp_path, "misc.md", "# Misc\nNothing here.\n")
+    (_, top), *_ = KnowledgeBase(tmp_path).search("who is alice")
+    assert top.source == "about-alice.md"
 
 
 def test_search_chinese(tmp_path):
