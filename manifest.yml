@@ -19,11 +19,15 @@ oauth_config:
       - im:read
       - im:write
       - reactions:write
+      # Reading an uploaded schwab_token.json for overseer_refresh_token.
+      - files:read
 settings:
   event_subscriptions:
     bot_events:
       - app_mention
       - message.im
+  # Required for the overseer approval buttons. With Socket Mode there is no
+  # request URL to configure; the toggle just has to be on.
   interactivity:
-    is_enabled: false
+    is_enabled: true
   socket_mode_enabled: true

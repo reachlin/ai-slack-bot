@@ -22,5 +22,23 @@ class Settings(BaseSettings):
     knowledge_dir: Path = Path("knowledge")
     log_level: str = "INFO"
 
+    # --- overseer control -------------------------------------------------
+    # Slack user ids allowed to drive the overseer, comma-separated. Empty
+    # admits nobody: a misconfigured deploy must fail closed, and this repo is
+    # public so the real ids live in .env.
+    overseer_admin_ids: str = ""
+    goldfinger_repo: Path = Path("~/dev/private/gold-finger").expanduser()
+    overseer_python: Path = Path("~/anaconda3/envs/gold-finger/bin/python").expanduser()
+    overseer_label: str = "com.goldfinger.overseer"
+    # overseer_status.py reconciles against the live Schwab account, so it is
+    # slow by nature; well under Slack's patience, well over a local script's.
+    overseer_timeout_s: float = 240.0
+    approval_ttl_s: float = 300.0
+    # Schwab OAuth token the overseer reads at startup.
+    overseer_token_path: Path = (
+        Path("~/dev/private/gold-finger/schwab/schwab_token.json").expanduser()
+    )
+    max_token_bytes: int = 65536
+
 
 settings = Settings()

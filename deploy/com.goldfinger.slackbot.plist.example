@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Run the bot on a Mac as a LaunchAgent (no container).
+
+  Copy to ~/Library/LaunchAgents/com.goldfinger.slackbot.plist, replace
+  __HOME__ with your home directory and __UV__ with `which uv`, then:
+
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.goldfinger.slackbot.plist
+      launchctl list | grep slackbot
+
+  Stop with:  launchctl bootout gui/$(id -u)/com.goldfinger.slackbot
+  Restart:    launchctl kickstart -k gui/$(id -u)/com.goldfinger.slackbot
+
+  Placeholders are used because this repo is public — the generated copy in
+  LaunchAgents is local and untracked.
+
+  No `caffeinate` here on purpose: it would be a third redundant power
+  assertion on a host where the overseer's own agents already hold one. If you
+  run this bot WITHOUT those agents, wrap the command in `/usr/bin/caffeinate
+  -is` or a sleeping Mac will take the bot offline with it.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.goldfinger.slackbot</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__UV__</string>
+    <string>run</string>
+    <string>--no-sync</string>
+    <string>python</string>
+    <string>-m</string>
+    <string>bot.app</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__HOME__/dev/private/ai-slack-bot</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Socket Mode drops occasionally; always come back. -->
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/dev/private/ai-slack-bot/slackbot.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/dev/private/ai-slack-bot/slackbot.log</string>
+
+  <key>ProcessType</key>
+  <string>Interactive</string>
+</dict>
+</plist>

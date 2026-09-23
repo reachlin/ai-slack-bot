@@ -2,7 +2,7 @@ import json
 from types import SimpleNamespace as NS
 
 import bot.llm as llm
-from bot import tools
+from bot.tools import knowledge as tools
 from bot.knowledge import KnowledgeBase
 from bot.tools import Tool, ToolBox
 
