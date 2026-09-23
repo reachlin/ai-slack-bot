@@ -6,4 +6,5 @@ services:
     env_file: .env
     volumes:
       - ./src:/app/src
+      - ./tests:/app/tests
     restart: unless-stopped

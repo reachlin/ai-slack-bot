@@ -11,6 +11,7 @@ FROM base AS dev
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
 COPY src ./src
+COPY tests ./tests
 RUN uv sync --frozen
 CMD ["watchfiles", "--filter", "python", "python -m bot.app", "src"]
 

@@ -15,6 +15,15 @@ After changing dependencies: `uv add <pkg>` then `docker compose up --build`.
 
 Usage: `@AI Bot <question>` in a channel (invite it first), or DM it. Replies stream into the thread; the whole thread is sent as context.
 
+## Tests
+
+```bash
+docker compose exec bot pytest     # inside the running dev container
+uv run pytest                      # or locally
+```
+
+Tests use fake Slack/LLM clients; no network or real credentials needed.
+
 ## Switch provider
 
 Edit `.env` — no code changes:

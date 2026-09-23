@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.deepseek.com"
     llm_api_key: str
     llm_model: str = "deepseek-chat"
+    llm_timeout_s: float = 120.0
 
     system_prompt: str = (
         "You are a helpful assistant in Slack. Be concise. "

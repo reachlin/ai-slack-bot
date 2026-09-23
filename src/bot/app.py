@@ -1,50 +1,83 @@
 import asyncio
 import logging
 import time
+from collections import OrderedDict
 
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from .config import settings
 from .context import build_messages
-from .llm import stream_reply
+from .llm import describe_error, stream_reply
+from .reply import ReplyStream
 
 log = logging.getLogger(__name__)
 app = AsyncApp(token=settings.slack_bot_token)
 
-UPDATE_INTERVAL_S = 1.0  # throttle chat.update to stay under Slack rate limits
+WORKING_REACTION = "hourglass_flowing_sand"
 
 
-async def answer(client: AsyncWebClient, channel: str, thread_ts: str, bot_user_id: str) -> None:
-    replies = await client.conversations_replies(channel=channel, ts=thread_ts, limit=200)
-    messages = build_messages(
-        replies["messages"], bot_user_id, settings.system_prompt, settings.max_context_tokens
-    )
+class RecentKeys:
+    """Remembers keys for `ttl` seconds; used to drop events Slack delivers more than once."""
 
-    placeholder = await client.chat_postMessage(
-        channel=channel, thread_ts=thread_ts, text="_Thinking…_"
-    )
-    ts = placeholder["ts"]
+    def __init__(self, ttl: float = 600.0):
+        self._ttl = ttl
+        self._seen: OrderedDict[str, float] = OrderedDict()
 
-    text, last_update = "", 0.0
+    def add(self, key: str) -> bool:
+        """Record `key`; return False if it was already seen recently."""
+        now = time.monotonic()
+        while self._seen and next(iter(self._seen.values())) < now - self._ttl:
+            self._seen.popitem(last=False)
+        if key in self._seen:
+            return False
+        self._seen[key] = now
+        return True
+
+
+handled = RecentKeys()
+
+
+async def _react(method, channel: str, ts: str) -> None:
     try:
-        async for delta in stream_reply(messages):
-            text += delta
-            if time.monotonic() - last_update >= UPDATE_INTERVAL_S:
-                await client.chat_update(channel=channel, ts=ts, text=text)
-                last_update = time.monotonic()
-    except Exception:
-        log.exception("LLM request failed")
-        text += "\n\n:warning: Sorry, something went wrong talking to the model."
+        await method(channel=channel, timestamp=ts, name=WORKING_REACTION)
+    except SlackApiError as e:
+        log.warning("Reaction update failed: %s", e.response["error"])
 
-    await client.chat_update(channel=channel, ts=ts, text=text or "_(empty response)_")
+
+async def answer(
+    client: AsyncWebClient, channel: str, thread_ts: str, message_ts: str, bot_user_id: str
+) -> None:
+    if not handled.add(f"{channel}:{message_ts}"):
+        log.info("Skipping duplicate event for %s:%s", channel, message_ts)
+        return
+
+    await _react(client.reactions_add, channel, message_ts)
+    try:
+        replies = await client.conversations_replies(channel=channel, ts=thread_ts, limit=200)
+        messages = build_messages(
+            replies["messages"], bot_user_id, settings.system_prompt, settings.max_context_tokens
+        )
+
+        reply = ReplyStream(client, channel, thread_ts)
+        note = ""
+        try:
+            async for delta in stream_reply(messages):
+                await reply.append(delta)
+        except Exception as exc:
+            log.exception("Reply failed")
+            note = f":warning: {describe_error(exc)}"
+        await reply.finish(note)
+    finally:
+        await _react(client.reactions_remove, channel, message_ts)
 
 
 @app.event("app_mention")
 async def on_mention(event, client, context):
     thread_ts = event.get("thread_ts") or event["ts"]
-    await answer(client, event["channel"], thread_ts, context["bot_user_id"])
+    await answer(client, event["channel"], thread_ts, event["ts"], context["bot_user_id"])
 
 
 @app.event("message")
@@ -53,7 +86,12 @@ async def on_message(event, client, context):
     if event.get("channel_type") != "im" or event.get("subtype") or event.get("bot_id"):
         return
     thread_ts = event.get("thread_ts") or event["ts"]
-    await answer(client, event["channel"], thread_ts, context["bot_user_id"])
+    await answer(client, event["channel"], thread_ts, event["ts"], context["bot_user_id"])
+
+
+@app.event("member_joined_channel")
+async def ignore_event():
+    pass
 
 
 async def main() -> None:
