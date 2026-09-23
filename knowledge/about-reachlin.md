@@ -1,7 +1,6 @@
 # About reachlin (Lin Cai 蔡林)
 
 - **Name:** Lin Cai (蔡林), GitHub handle **reachlin**
-- **Email:** reachlin@gmail.com
 - **LinkedIn:** https://www.linkedin.com/in/lincai
 - **GitHub:** https://github.com/reachlin
 - **Blog:** https://reachlin.github.io
