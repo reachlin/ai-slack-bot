@@ -93,6 +93,8 @@ async def answer(
     try:
         replies = await client.conversations_replies(channel=channel, ts=thread_ts, limit=200)
         # Offer only the tools this caller may actually use.
+        if is_admin(user_id):
+            log.info("AUDIT privileged session user=%s channel=%s", user_id, channel)
         box = toolbox_for(user_id)
         tools = box if box.schemas else None
         system_prompt = settings.system_prompt + hint_for(user_id)
@@ -189,6 +191,12 @@ async def on_approve(ack, body, client):
         return
 
     ok, detail = await asyncio.to_thread(executor, pending)
+    # Audit trail. Reconstructing who halted live trading, and when, must not
+    # require correlating process start times against Slack timestamps.
+    log.info(
+        "AUDIT %s approved by=%s requested_by=%s channel=%s ok=%s detail=%s",
+        pending.action, clicker, pending.requested_by, pending.channel, ok, detail,
+    )
     icon = ":white_check_mark:" if ok else ":x:"
     await _settle(client, body, f"{icon} *{pending.action}* approved by <@{clicker}> — {detail}")
 
@@ -204,6 +212,10 @@ async def on_reject(ack, body, client):
     if pending is None:
         await _settle(client, body, ":hourglass: That request expired or was already handled.")
         return
+    log.info(
+        "AUDIT %s rejected by=%s requested_by=%s channel=%s",
+        pending.action, clicker, pending.requested_by, pending.channel,
+    )
     await _settle(client, body, f":no_entry_sign: *{pending.action}* rejected by <@{clicker}>.")
 
 

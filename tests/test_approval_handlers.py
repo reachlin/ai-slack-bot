@@ -127,3 +127,64 @@ async def test_a_stranger_cannot_reject_either(wired):
 
     assert "not authorised" in client.updates[0]["text"]
     assert store.take(pending.id) is not None
+
+
+# --- audit trail -----------------------------------------------------------
+
+def _audit(caplog):
+    return [r.message for r in caplog.records if "AUDIT" in r.message]
+
+
+async def test_an_approval_is_recorded_with_who_what_and_outcome(wired, caplog):
+    """Reconstructing 'who restarted live trading, when' should not require
+    correlating process start times against Slack message timestamps — which is
+    exactly what it took on 2026-09-23, because only DENIED clicks were logged.
+    """
+    store, _, client = wired
+    pending = store.register("restart", requested_by=ADMIN, channel="C1", thread_ts="1.0")
+
+    with caplog.at_level("INFO"):
+        await botapp.on_approve(_noop_ack, _body(pending.id, ADMIN), client)
+
+    line = _audit(caplog)
+    assert line, "an executed action must leave an audit line"
+    assert ADMIN in line[0]
+    assert "restart" in line[0]
+    assert "approved" in line[0]
+    assert "ok=True" in line[0]
+
+
+async def test_a_failed_execution_is_recorded_as_such(wired, caplog, monkeypatch):
+    store, _, client = wired
+    monkeypatch.setattr(
+        botapp, "EXECUTORS", {"restart": lambda pending=None: (False, "launchctl blew up")}
+    )
+    pending = store.register("restart", requested_by=ADMIN, channel="C1", thread_ts="1.0")
+
+    with caplog.at_level("INFO"):
+        await botapp.on_approve(_noop_ack, _body(pending.id, ADMIN), client)
+
+    assert "ok=False" in _audit(caplog)[0]
+
+
+async def test_a_rejection_is_recorded_too(wired, caplog):
+    store, _, client = wired
+    pending = store.register("restart", requested_by=ADMIN, channel="C1", thread_ts="1.0")
+
+    with caplog.at_level("INFO"):
+        await botapp.on_reject(_noop_ack, _body(pending.id, ADMIN), client)
+
+    line = _audit(caplog)
+    assert line and "rejected" in line[0] and ADMIN in line[0]
+
+
+async def test_the_requester_is_recorded_alongside_the_approver(wired, caplog):
+    """They can differ — one admin asks, another approves. Both belong in the
+    record."""
+    store, _, client = wired
+    pending = store.register("restart", requested_by="U_REQUESTER", channel="C1", thread_ts="1.0")
+
+    with caplog.at_level("INFO"):
+        await botapp.on_approve(_noop_ack, _body(pending.id, ADMIN), client)
+
+    assert "U_REQUESTER" in _audit(caplog)[0]
