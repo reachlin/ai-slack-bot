@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +19,7 @@ class Settings(BaseSettings):
         "Format with Slack mrkdwn: *bold*, _italic_, `code`, ```blocks```."
     )
     max_context_tokens: int = 8000
+    knowledge_dir: Path = Path("knowledge")
     log_level: str = "INFO"
 
 

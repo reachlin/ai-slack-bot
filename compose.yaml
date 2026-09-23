@@ -7,4 +7,5 @@ services:
     volumes:
       - ./src:/app/src
       - ./tests:/app/tests
+      - ./knowledge:/app/knowledge:ro
     restart: unless-stopped

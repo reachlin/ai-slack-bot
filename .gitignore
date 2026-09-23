@@ -1,4 +1,8 @@
 .env
+.pytest_cache/
+# Knowledge notes may be private and this repo is public; only the sample is tracked.
+knowledge/*
+!knowledge/about-this-bot.md
 .venv/
 __pycache__/
 *.pyc

@@ -12,6 +12,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
 COPY src ./src
 COPY tests ./tests
+COPY knowledge ./knowledge
 RUN uv sync --frozen
 CMD ["watchfiles", "--filter", "python", "python -m bot.app", "src"]
 
@@ -20,6 +21,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY src ./src
 RUN uv sync --frozen --no-dev --no-editable
+COPY knowledge ./knowledge
 RUN useradd --create-home bot
 USER bot
 CMD ["python", "-m", "bot.app"]

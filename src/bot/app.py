@@ -12,6 +12,7 @@ from .config import settings
 from .context import build_messages
 from .llm import describe_error, stream_reply
 from .reply import ReplyStream
+from .tools import KNOWLEDGE_HINT, kb, toolbox
 
 log = logging.getLogger(__name__)
 app = AsyncApp(token=settings.slack_bot_token)
@@ -57,14 +58,17 @@ async def answer(
     await _react(client.reactions_add, channel, message_ts)
     try:
         replies = await client.conversations_replies(channel=channel, ts=thread_ts, limit=200)
+        # Offer the knowledge tool only when there are notes to search.
+        tools = None if kb.is_empty() else toolbox
+        system_prompt = settings.system_prompt + (KNOWLEDGE_HINT if tools else "")
         messages = build_messages(
-            replies["messages"], bot_user_id, settings.system_prompt, settings.max_context_tokens
+            replies["messages"], bot_user_id, system_prompt, settings.max_context_tokens
         )
 
         reply = ReplyStream(client, channel, thread_ts)
         note = ""
         try:
-            async for delta in stream_reply(messages):
+            async for delta in stream_reply(messages, tools):
                 await reply.append(delta)
         except Exception as exc:
             log.exception("Reply failed")
@@ -97,6 +101,8 @@ async def ignore_event():
 async def main() -> None:
     logging.basicConfig(level=settings.log_level)
     log.info("Starting bot with model=%s base_url=%s", settings.llm_model, settings.llm_base_url)
+    kb.refresh()
+    log.info("Knowledge: %d sections from %s", len(kb.chunks), kb.root.resolve())
     await AsyncSocketModeHandler(app, settings.slack_app_token).start_async()
 
 

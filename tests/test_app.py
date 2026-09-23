@@ -14,7 +14,7 @@ def fresh_dedupe(monkeypatch):
 
 
 def fake_llm(monkeypatch, chunks=(), error=None):
-    async def stream_reply(messages):
+    async def stream_reply(messages, tools=None):
         for chunk in chunks:
             yield chunk
         if error:

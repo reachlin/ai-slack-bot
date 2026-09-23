@@ -15,6 +15,17 @@ After changing dependencies: `uv add <pkg>` then `docker compose up --build`.
 
 Usage: `@AI Bot <question>` in a channel (invite it first), or DM it. Replies stream into the thread; the whole thread is sent as context.
 
+## Knowledge base
+
+Put markdown files in `knowledge/` (subfolders are fine). The bot gets a `search_knowledge` tool and
+decides when to use it, citing the file and heading it drew from. Files are split into sections by
+heading and searched with BM25 keywords (Chinese/Japanese/Korean via character bigrams). Edits are
+picked up on the next question; no restart needed.
+
+The folder is mounted read-only into the dev container and copied into the prod image.
+**This repo is public, so `knowledge/` is git-ignored** except `about-this-bot.md`. Remove the
+`knowledge/*` lines in `.gitignore` if your notes are safe to publish.
+
 ## Tests
 
 ```bash
