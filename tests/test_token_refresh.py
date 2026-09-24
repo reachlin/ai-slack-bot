@@ -282,8 +282,8 @@ def test_a_failed_deletion_does_not_mask_a_successful_install(monkeypatch, tmp_p
     ok, msg = overseer.execute_refresh_token(_pending_with_file())
 
     assert ok, "the install succeeded; cleanup is secondary"
-    assert "could not delete" in msg
-    assert "manually" in msg
+    assert "STILL IN SLACK" in msg
+    assert "delete the" in msg
     assert dst.exists()
 
 
@@ -300,3 +300,73 @@ def test_deletion_is_skipped_when_there_is_no_file_id(monkeypatch, tmp_path):
     )
     ok, _ = overseer.execute_refresh_token(pending)
     assert ok and called == []
+
+
+# --- the deletion promise (2026-09-24) -------------------------------------
+#
+# The first version always called files.delete with the BOT token and it always
+# failed: Slack only lets an app delete files the app itself uploaded. A token
+# the user uploads can only be deleted with a USER token. So the bot was
+# promising cleanup it could never perform, and the credential stayed in Slack.
+
+def test_no_user_token_means_no_pointless_api_call(monkeypatch):
+    """Calling files.delete with a bot token on a user's upload is a known
+    failure. Don't make the call — say what the user must do instead."""
+    monkeypatch.setattr(overseer.settings, "slack_user_token", "")
+    called = []
+    monkeypatch.setattr(overseer, "_slack_post", lambda *a, **k: called.append(a))
+
+    ok, why = overseer._delete_slack_file("F123")
+
+    assert not ok
+    assert called == [], "must not call the API when it cannot possibly succeed"
+    assert "user token" in why.lower()
+
+
+def test_a_user_token_is_used_when_configured(monkeypatch):
+    monkeypatch.setattr(overseer.settings, "slack_user_token", "xoxp-test")
+    used = {}
+
+    def fake_post(url, token, data):
+        used["token"] = token
+        return {"ok": True}
+
+    monkeypatch.setattr(overseer, "_slack_post", fake_post)
+    ok, why = overseer._delete_slack_file("F123")
+
+    assert ok
+    assert used["token"] == "xoxp-test", "deletion needs the USER token, not the bot token"
+
+
+def test_a_slack_error_is_reported_verbatim(monkeypatch):
+    monkeypatch.setattr(overseer.settings, "slack_user_token", "xoxp-test")
+    monkeypatch.setattr(
+        overseer, "_slack_post", lambda *a, **k: {"ok": False, "error": "file_not_found"}
+    )
+    ok, why = overseer._delete_slack_file("F123")
+    assert not ok and "file_not_found" in why
+
+
+async def test_the_prompt_does_not_promise_deletion_it_cannot_do(ctx, monkeypatch):
+    """Without a user token the approval prompt must not claim the upload will
+    be removed — that is how a live credential gets left in Slack while
+    everyone believes it was cleaned up."""
+    monkeypatch.setattr(overseer.settings, "slack_user_token", "")
+    _serve(monkeypatch, a_token())
+    current_files.set([an_upload()])
+
+    await overseer.overseer_refresh_token()
+
+    posted = str(ctx.posts[0]).lower()
+    assert "deleted from slack" not in posted
+    assert "delete" in posted, "it should still tell the user to remove it themselves"
+
+
+async def test_the_prompt_does_promise_deletion_when_it_can(ctx, monkeypatch):
+    monkeypatch.setattr(overseer.settings, "slack_user_token", "xoxp-test")
+    _serve(monkeypatch, a_token())
+    current_files.set([an_upload()])
+
+    await overseer.overseer_refresh_token()
+
+    assert "deleted from slack" in str(ctx.posts[0]).lower()

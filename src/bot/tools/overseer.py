@@ -346,8 +346,13 @@ async def overseer_refresh_token() -> str:
         "refresh_token",
         f"Install a new Schwab token and restart the *gold-finger overseer*.\n"
         f"New token: valid *{ttl_h:.1f}h*, expires *{expires}*.\n"
-        f"The current token is archived first, and the uploaded file is deleted "
-        f"from Slack once it is installed.",
+        f"The current token is archived first. "
+        + (
+            "The uploaded file is deleted from Slack once it is installed."
+            if can_delete_uploads()
+            else ":warning: I cannot delete your upload (that needs a user "
+                 "token) — please delete it from Slack yourself afterwards."
+        ),
         payload={
             "token": data,
             "expires": expires,
@@ -373,33 +378,54 @@ OVERSEER_REFRESH_TOKEN = Tool(
 )
 
 
-def _delete_slack_file(file_id: str) -> tuple[bool, str]:
-    """Remove an uploaded file from Slack.
-
-    A Schwab refresh token sitting in Slack storage is a live credential in a
-    third system nobody is auditing. Needs the files:write bot scope; stdlib
-    only, because this runs in the sync executor thread.
-    """
+def _slack_post(url: str, token: str, data: dict) -> dict:
+    """POST to a Slack Web API method. Stdlib only — runs in a sync thread."""
     import urllib.parse
     import urllib.request
 
-    body = urllib.parse.urlencode({"file": file_id}).encode()
     req = urllib.request.Request(
-        "https://slack.com/api/files.delete",
-        data=body,
+        url,
+        data=urllib.parse.urlencode(data).encode(),
         headers={
-            "Authorization": f"Bearer {settings.slack_bot_token}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/x-www-form-urlencoded",
         },
     )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read())
+
+
+def can_delete_uploads() -> bool:
+    """Whether this bot can actually remove a file the USER uploaded."""
+    return bool(settings.slack_user_token)
+
+
+def _delete_slack_file(file_id: str) -> tuple[bool, str]:
+    """Remove the uploaded token from Slack, if we are able to.
+
+    A Schwab refresh token sitting in Slack storage is a live credential in a
+    third system nobody audits. But `files.delete` only works on files the
+    CALLING identity uploaded — an app cannot delete a user's attachment. The
+    first version called this with the bot token every time and always got
+    `cant_delete_file` (seen 2026-09-24), while the approval prompt had already
+    promised the upload would be removed. A promise the code cannot keep is
+    worse than no cleanup at all, so now it only tries when a user token is
+    configured, and says plainly when it is not.
+    """
+    if not can_delete_uploads():
+        return False, (
+            "no user token configured (SLACK_USER_TOKEN) — a bot token cannot "
+            "delete a file you uploaded"
+        )
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            payload = json.loads(resp.read())
-        if payload.get("ok"):
-            return True, "deleted"
-        return False, payload.get("error", "unknown error")
+        payload = _slack_post(
+            "https://slack.com/api/files.delete",
+            settings.slack_user_token,
+            {"file": file_id},
+        )
     except Exception as exc:  # noqa: BLE001
         return False, f"{type(exc).__name__}: {exc}"
+    return (True, "deleted") if payload.get("ok") else (False, payload.get("error", "unknown error"))
 
 
 def execute_refresh_token(pending) -> tuple[bool, str]:
@@ -428,7 +454,8 @@ def execute_refresh_token(pending) -> tuple[bool, str]:
         note = (
             " Uploaded file deleted from Slack."
             if deleted
-            else f" :warning: could not delete the upload from Slack ({why}) — remove it manually."
+            else f" :warning: your upload is STILL IN SLACK ({why}) — delete the "
+                 "schwab_token.json message yourself; it holds a live credential."
         )
 
     ok, msg = execute_restart()

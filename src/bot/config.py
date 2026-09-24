@@ -8,6 +8,10 @@ class Settings(BaseSettings):
 
     slack_bot_token: str
     slack_app_token: str
+    # OPTIONAL xoxp- user token. Only needed to delete a schwab_token.json the
+    # USER uploaded: Slack lets an app delete only files the app itself
+    # uploaded, so a bot token can never clean up someone else's attachment.
+    slack_user_token: str = ""
 
     llm_base_url: str = "https://api.deepseek.com"
     llm_api_key: str

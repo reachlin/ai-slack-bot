@@ -46,7 +46,9 @@ For a token refresh: re-authenticate Schwab on any machine, upload the resulting
 `schwab_token.json`, and ask the bot to install it. It checks the token is actually valid
 before asking for approval — installing an expired one would look like success and blind
 the overseer at the next market open — then archives the old token, restarts the
-overseer, and deletes the uploaded file from Slack so the credential does not linger.
+overseer. It will also delete the uploaded file from Slack **if** a user token is
+configured — an app can only delete files it uploaded itself, so without one you must
+delete the message yourself. The bot says which applies when it reports the result.
 
 ### Who can do this
 
